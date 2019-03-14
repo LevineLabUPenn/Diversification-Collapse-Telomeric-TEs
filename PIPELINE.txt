@@ -1,0 +1,812 @@
+
+Software_requirement
+
+- BLAST (https://www.ncbi.nlm.nih.gov/books/NBK279690/)
+- R (https://www.r-project.org/)
+- Geneious (https://www.geneious.com/)
+- MAFFT (http://mafft.cbrc.jp/alignment/software/)
+- FastTree (http://www.microbesonline.org/fasttree/)
+- bedtools2 (https://github.com/arq5x/bedtools2/releases/latest)
+- seqtk (https://github.com/lh3/seqtk.git) 
+- Sixpack (http://emboss.sourceforge.net/apps/release/6.6/emboss/apps/sixpack.html)
+
+
+####################################
+#                                  #
+#             STEP_1               #
+#                                  #
+####################################
+[1]
+
+#########
+##BLAST##
+#########
+
+###Make_blast_db_from_raw_reads###
+
+cd /path_to_genome_reads/
+
+for f in * 
+
+do; 
+
+makeblastdb -in ./$f -dbtype nucl;
+
+done
+
+
+
+###tblastn_on_TE_query_list####
+
+for f in SRR*.fasta
+do;
+tblastn -db ./$f -query ./query.fasta -out ../blast/$f -outfmt  " 6 qseqid means sseqid means qstart means qend means sstart means send means evalue means bitscore length means pident means mismatch means gapopen means qlen means";
+done
+
+
+
+[2]
+#################################
+##Read_filtering_and_extraction##
+#################################
+
+###Open_R_session###
+
+
+directory <- ("/path_to_blast_output_table/")
+setwd(directory)
+filestodo <- dir(path=directory, pattern="*")
+filestodo
+
+
+
+lists <- lapply(filestodo, function(x) {
+  tryCatch(read.table(x, header = FALSE), error=function(e) NULL)
+})
+
+
+ta <- unique(lists[[1]]$V1)
+
+
+fun0 <- function(x){
+subset(x, x$V1==tb)
+}
+lis <- list()
+lisi <- list()
+for (i in 1:length(ta)){
+tb <- as.character(ta[i])
+lis[[i]] <- lapply(lists, fun0)
+lisi[[i]] <- do.call(rbind, lis[[i]])
+}
+
+tc <- as.character(ta)
+
+
+
+funu1 <- function(x){
+subset (x, x[,10]>=80)
+}
+lis1 <- lapply(lisi, funu1)
+
+funu2 <- function(x){
+x$V5-x$V6
+}
+lis2 <- lapply(lis1, funu2)
+
+funu3 <- function(x){
+ifelse (x[,5]-x[,6] <=0, x[,5], x[,6])
+}
+nn1 <- lapply (lis1, funu3) 
+
+funu4 <- function(x){
+ifelse (x[,5]-x[,6] >=0, x[,5], x[,6])
+}
+nn2 <- lapply (lis1, funu4)
+
+funu5 <- function(x){
+as.character(x[,2])
+} 
+
+nn0 <- lapply (lis1, funu5)
+
+
+funu6 <- function(x){
+as.character(x[,1])
+} 
+nn3 <- lapply (lis1, funu6)
+
+funu7 <- function(x){
+paste (x ,c(1:length(x)), sep="_")
+}
+
+nn4 <- lapply(nn3, funu7)
+
+kk <- mapply (cbind, nn0, nn1, nn2, nn4,  SIMPLIFY=F)
+
+setwd("/path_to_bed_file_output/")
+
+###Make_bed_files_with_exact_blast_hits_coordinates###
+
+mapply (write.table, kk, file=tc, row.names=FALSE, col.names=FALSE, quote=FALSE, sep="	")
+
+
+
+###Get_extanted_coordinates_to_extract_full_length_read###
+
+
+directory <- ("/path_to_bed_file/")
+setwd(directory)
+filestodo <- dir(path=directory, pattern="*.txt")
+filestodo
+lists <- lapply (filestodo, read.table, header=FALSE)
+
+directory <- ("/path_to_read_length/")
+setwd(directory)
+filestodo1 <- dir(path=directory, pattern="lengthXXX")
+lists1 <- lapply (filestodo1, read.table, header=FALSE)
+ 
+ko<-NULL
+nj<-NULL
+for (n in 1:length(lists)){
+
+ko <- lists[[n]]$V1
+nj[[n]] <- lists1[[1]][lists1[[1]]$V1 %in% ko, ]
+}
+
+
+j <- NULL
+for (i in 1:length(nj)){
+
+a <- nj[[i]]$V1
+b <- rep(1,length(nj[[i]]$V1))
+c <- nj[[i]]$V2
+d <- nj[[i]]$V1
+
+j[[i]] <- cbind(as.character(a),b,c,as.character(d))
+}
+
+###Make_bed_files_with_total_read_length###
+
+setwd("/path_to_total_coordinates/")
+for (i in 1:length(filestodo)){
+write.table (file=paste(filestodo[[i]], ".bed", sep=""), j[[i]], col.names=FALSE, row.names=FALSE, quote=FALSE, sep="	") }
+
+
+###exit(R)####
+
+
+
+####extract_read_with_bedtools#####
+
+cd /path_to_total_coordinates/
+
+for f in *
+
+
+do
+/path_to_bedtools_bin/bedtools getfasta -fi /path_to_genome/ -bed $f -fo /path_to_fasta_output/$f.fa
+done
+
+
+
+
+
+[3]
+####################
+##de novo assembly##
+####################
+
+
+Import fasta files to geneious
+
+run de novo assembly with Genious Assembler --[option] High Sensitivity / Medium
+
+Export Consensus assemblies to a new directory
+
+
+[4]
+####################
+##FastTree_Sorting##
+####################
+
+
+
+
+
+[[4-1]]
+###make_new_directory_for_list_of_consensus_per_reference_TE####
+
+
+ROOT_FOLDER="/Volumes/Baba_data/suzukii/consensus/"
+
+cd "$ROOT_FOLDER"
+
+
+
+
+for file in *; do
+    dir=${file%%.*}
+    mkdir -p "$dir"
+    mv "$file" "$dir"
+done
+
+
+
+
+for f in "$ROOT_FOLDER"*; 
+
+ 
+do    
+
+[ -d $f ] && cd "$f" && 
+awk 'BEGIN {n_seq=0;} /^>/ {if(n_seq%1==0){file=sprintf("myseq%d.fa",n_seq);} print >> file; n_seq++; next;} { print >> file; close(file)}' < tr4* 
+ 
+done
+
+
+
+
+for f in "$ROOT_FOLDER"*;
+
+do    
+
+[ -d $f ] && cd "$f" && rm ./*.fasta 
+
+done
+
+
+for f in "$ROOT_FOLDER"*;
+
+do    
+
+[ -d $f ] && cd "$f" && mkdir cons 
+
+done
+
+
+
+for f in "$ROOT_FOLDER"*;
+do    
+
+[ -d $f ] && cd "$f" && for i in *; do mv $i ./cons; done 
+
+done
+
+
+for f in "$ROOT_FOLDER"*;
+do    
+
+[ -d $f ] && cd "$f" &&  mkdir prep_ali ali tree valide
+
+done
+
+
+
+
+[[4-2]]
+############Run-alignments(MAFFT)_and_TREES(FastTree)############
+
+
+#######ADD_REFERENCE_TREE_FILE_(total.fasta)########
+
+
+
+
+
+cd "$ROOT_FOLDER"
+
+for f in "$ROOT_FOLDER"*/cons;
+
+do    
+
+  cp "$ROOT_FOLDER"/total.fasta $f
+
+done
+
+
+
+rm "$ROOT_FOLDER"total.fasta
+
+
+
+cd "$ROOT_FOLDER"
+
+for i in * 
+
+do  cd  "$ROOT_FOLDER"/$i/cons 
+
+for f in myseq*  ;  do cat $f total.fasta> ../prep_ali/$f ; done
+
+done
+
+
+
+cd "$ROOT_FOLDER"
+
+
+for i in * 
+
+do  cd "$ROOT_FOLDER"/$i/prep_ali
+
+
+
+for f in * ; do mafft --auto $f > ../ali/$f ; done
+
+
+done
+
+
+
+FASTTREE="/Users/basai/Desktop/"
+
+
+
+cd "$ROOT_FOLDER"
+
+for i in * 
+
+do  cd "$ROOT_FOLDER"$i/ali/
+
+
+for f in myseq* ; do "$FASTTREE"FastTree -gtr -nt ./$f > ../tree/$f ; done
+
+done
+
+
+
+
+[[4-3]]
+##########TREE_SORTING##########
+
+####rename_trees_with_reference_TE_name####
+
+cd "$ROOT_FOLDER"
+
+for dir in *; do 
+    find "$dir/tree/" -type f -print0 |  
+        while IFS= read -r -d '' f; do 
+            dd=$(dirname "$f")
+            new="${f/tree\/}"
+            new="${new//\//_}" 
+            mv "$f" "$dd"/"$new"
+        done
+done
+
+####cp_all_trees_in_new_directory####
+
+
+
+cd "$ROOT_FOLDER"
+
+mkdir totaltree
+
+for i in * 
+
+do   cd "$ROOT_FOLDER"$i/tree 
+
+for f in *myseq*  ;  do mv $f "$ROOT_FOLDER"/totaltree ; done
+
+done
+
+cd "$ROOT_FOLDER"totaltree
+
+mkdir valid
+
+
+
+####OPEN_R_SESSION####
+
+
+
+
+
+library("ape")
+library("phytools")
+
+
+directory <- ("/path_to_trees/")
+setwd(directory)
+filestodo <- dir(path=directory, pattern="*fa")
+
+lists <- lapply (filestodo, read.newick)
+
+
+fun <- function(x){
+tt <- as.data.frame(x$edge)
+min <- min(tt[,1])
+
+rootedge <- subset(tt, tt[,1]==min)
+}
+
+U <- lapply(lists, fun)
+
+
+funj <- function(x){
+ifelse (x[[2]]- x[[1]] <= 0, x[[2]], x[[2]]-x[[1]])
+}
+HH <- lapply(U, funj)
+
+fg <- function(x){
+c(x[1], x[2]+1, x[3]+2)
+}
+HH <- lapply(HH, fg)
+
+
+fun1 <- function(x){
+x$tip.label
+}
+W <- lapply(lists, fun1)
+
+
+gh <- function(x,y){
+x[y]
+}
+JJ <- mapply(gh, W, HH)
+
+
+HILL  <- as.list(as.data.frame(JJ))
+funnn <- function(x){ grep("Contig", x)}
+tg <- lapply(HILL, funnn)
+
+moms <- function(x){
+if (length(x)==0)
+return(0)
+return(1)
+}
+
+tg <- lapply(tg, moms)
+
+ir <- do.call(rbind, tg)
+
+tty <- cbind(ir, filestodo)
+ttx <- subset(tty, tty[,1]=="0")
+
+B <- cbind(ttx[,2])
+M <- as.data.frame(filestodo)
+QQ <- M$filestodo%in%B
+MM <- cbind(M,QQ)
+E <- as.numeric(subset(row.names(MM), MM$QQ==1))
+
+
+setwd("/path_to_trees/valid/")
+JLO <- for (i in c(E)){
+write.table(file=as.character(filestodo[i]), write.tree(lists[[i]]), quote=FALSE, col.names=FALSE, row.names=FALSE)
+}
+
+
+
+
+[[4-4]]
+####################################################################################
+#                                                                                  #
+#       Visual Inspection of remniscent Trees:                                     #
+#                                                                                  #
+#       -Import Trees from the valid folder into a tree viewer                     #
+#                                                                                  #
+#       -Double Check for Tree topology making sure that consensus are outgroups   #
+#                                                                                  #
+####################################################################################
+
+
+
+[[4-5]]
+############Import_consensus_sequence_from_tree_to generate_new_query_for_step2#######
+
+
+cd "$ROOT_FOLDER"
+
+for dir in *; do 
+    find "$dir/cons/" -type f -print0 |  
+        while IFS= read -r -d '' f; do 
+            dd=$(dirname "$f")
+            new="${f/cons\/}"
+            new="${new//\//_}" 
+            mv "$f" "$dd"/"$new"
+        done
+done
+
+
+cd "$ROOT_FOLDER"
+
+mkdir totalseq
+mkdir sub
+
+for i in * 
+
+do   cd "$ROOT_FOLDER"$i/cons 
+
+for f in *myseq*  ;  do mv $f "$ROOT_FOLDER"/totalseq ; done
+
+done
+
+
+
+#####Import_all_filtered_ingroup_Trees_in_a_'Trees'_folder#####
+
+cd "$ROOT_FOLDER"/Trees
+
+for entry in `ls $search_dir`; do     echo $entry; done >name.txt
+
+
+awk '{print "$ROOT_FOLDERtotalseq/"$0}' $ROOT_FOLDER/Trees/name.txt >$ROOT_FOLDER/Trees/name1.txt
+
+
+
+
+cd $ROOT_FOLDER/totalseq
+
+for f in * 
+
+do
+
+grep -f $ROOT_FOLDER/Trees/name1.txt ./$f | while read f; do mv "$f" ../sub/
+
+done
+
+
+cd $ROOT_FOLDER/sub/
+
+
+cat * > query.fasta
+
+awk '/^>/{print ">consensus" ++i; next}{print}' < query.fasta > query_step2.fasta
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+####################################
+#                                  #
+#             STEP_2               #
+#                                  #
+####################################
+
+
+Reiterate_step_1_until_step[[4-4]]_using_blastn_instead_of_tblast_in_[[1]] in a new directory:
+
+
+ROOT_FOLDER="path_to_your_main_Folder/consensus_step2/"
+
+
+
+###blastn_on_new_query_list####
+
+for f in *.fasta
+do;
+blastn -db ./$f -query ./query.fasta -out ../blast/$f -outfmt  " 6 qseqid means sseqid means qstart means qend means sstart means send means evalue means bitscore length means pident means mismatch means gapopen means qlen means";
+done
+
+#############
+
+Run up to step [[4-4]]
+
+############
+
+
+
+[[4-4]]
+####################################################################################
+#                                                                                  #
+#       Visual Inspection of remniscent Trees:                                     #
+#                                                                                  #
+#       -Import Trees from the valid folder into a tree viewer                     #
+#                                                                                  #
+#       -Double Check for Tree topology making sure that consensus are outgroups   #
+#                                                                                  #
+#       -Cluster consensus by tree node (HeT-A/TAHRE; TART; TR1; TR2; TR3; TR4;    #
+#        Jockey                                                                    #
+#                                                                                  #
+####################################################################################
+
+
+(e.g. for folders clustered by tree node)
+
+
+/cd "$ROOT_FOLDER"/Trees/
+└── ORF_1
+    ├── HeT-A:TAHRE
+    │   ├── consensus_1.newick
+    │   ├── consensus_2.newick
+    │   └── consensus_n.newick
+    ├── Jockey
+    │   ├── consensus_1.newick
+    │   ├── consensus_2.newick
+    │   └── consensus_n.newick
+    ├── TART
+    │   ├── consensus_1.newick
+    │   ├── consensus_2.newick
+    │   └── consensus_n.newick
+    ├── TR1
+    │   ├── consensus_1.newick
+    │   ├── consensus_2.newick
+    │   └── consensus_n.newick
+    ├── TR2
+    │   ├── consensus_1.newick
+    │   ├── consensus_2.newick
+    │   └── consensus_n.newick
+    ├── TR3
+    │   ├── consensus_1.newick
+    │   ├── consensus_2.newick
+    │   └── consensus_n.newick
+    └── TR4
+        ├── consensus_1.newick
+        ├── consensus_2.newick
+        └── consensus_n.newick
+
+##########################################
+
+
+cd "$ROOT_FOLDER"
+
+for dir in *; do 
+    find "$dir/cons/" -type f -print0 |  
+        while IFS= read -r -d '' f; do 
+            dd=$(dirname "$f")
+            new="${f/cons\/}"
+            new="${new//\//_}" 
+            mv "$f" "$dd"/"$new"
+        done
+done
+
+
+cd "$ROOT_FOLDER"
+
+mkdir totalseq
+mkdir sub
+
+for i in * 
+
+do   cd "$ROOT_FOLDER"$i/cons 
+
+for f in *myseq*  ;  do mv $f "$ROOT_FOLDER"/totalseq ; done
+
+done
+
+
+
+#####Import_all_filtered_ingroup_Trees_in_a_'Trees'_folder#####
+
+cd "$ROOT_FOLDER"/Trees/ORF_1/
+
+
+cd "$ROOT_FOLDER"/Trees/ORF_1/HeT-A\:TAHRE/
+
+for entry in `ls $search_dir`; do     echo $entry; done >name.txt
+
+awk '{print "$ROOT_FOLDERtotalseq/"$0}' $ROOT_FOLDER/Trees/ORF_1/HeT-A\:TAHRE/name.txt >$ROOT_FOLDER/Trees/ORF_1/HeT-A\:TAHRE/name1.txt
+
+
+
+
+while read file; do mv "$file" "$ROOT_FOLDER"/sub/o1heta/ ; done < /"$ROOT_FOLDER"/Trees/ORF_1/HeT-A\:TAHRE/name1.txt
+
+
+
+cd "$ROOT_FOLDER"/sub/
+
+
+
+for i in * 
+
+do  cd "$ROOT_FOLDER"/sub/$i/
+
+
+for f in *myseq* ; do 
+transeq -sequence ./$f -outseq ./t/$f.fasta -frame 6 ; done
+
+done
+
+
+
+
+
+for f in "$ROOT_FOLDER"/sub/*; 
+
+ 
+do    
+
+[ -d $f ] && cd "$f" && 
+awk 'BEGIN {n_seq=0;} /^>/ {if(n_seq%1==0){file=sprintf("myseq%d.fa",n_seq);} print >> file; n_seq++; next;} { print >> file; close(file)}' < *.fasta 
+ 
+done
+
+
+
+
+
+for f in "$ROOT_FOLDER"/sub/*;
+
+do    
+
+[ -d $f ] && cd "$f" && rm ./*.fasta 
+
+done
+
+
+for f in "$ROOT_FOLDER"/sub/*;
+
+do    
+
+[ -d $f ] && cd "$f" && mkdir cons 
+
+done
+
+
+
+for f in "$ROOT_FOLDER"/sub/*;
+do    
+
+[ -d $f ] && cd "$f" && for i in *; do mv $i ./cons; done 
+
+done
+
+
+for f in "$ROOT_FOLDER"/sub/*;
+do    
+
+[ -d $f ] && cd "$f" &&  mkdir prep_ali ali tree
+
+done
+
+#####
+add fasta node to seq file
+####
+
+
+cd "$ROOT_FOLDER"/sub/
+
+for i in * 
+
+do  cd  "$ROOT_FOLDER"/sub/$i/cons 
+
+for f in myseq*  ;  do cat $f total.fasta> ../prep_ali/$f ; done
+
+done
+
+
+
+
+
+
+cd "$ROOT_FOLDER"/sub/
+
+
+for i in * 
+
+do  cd "$ROOT_FOLDER"/sub//$i/prep_ali
+
+
+
+for f in * ; do mafft --auto $f > ../ali/$f ; done
+
+
+done
+
+
+
+
+######################################
+STEP2_OVER
+######################################
+
+
+
+
+
+Import translated consensus aligned to reference TEs and generate final consensus 
+using the majority rule on Genieous.
+
+
+ 
+
+ 
